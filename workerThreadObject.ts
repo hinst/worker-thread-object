@@ -1,16 +1,11 @@
 import worker_threads from 'worker_threads';
 
-export interface WorkerThreadObject<INPUT, OUTPUT> {
-    run: (input: INPUT) => Promise<OUTPUT>;
-}
-
 export class WorkerThreadRunner<INPUT, OUTPUT> {
-    async main(constructor: () => WorkerThreadObject<INPUT, OUTPUT>) {
+    async main(workerFunction: (input: INPUT) => Promise<OUTPUT>) {
         if (!worker_threads.isMainThread) {
-            const workerObject = constructor()
             const input: INPUT = worker_threads.workerData;
             try {
-                const output = await workerObject.run(input);
+                const output = await workerFunction(input);
                 worker_threads.parentPort.postMessage(output);
             } catch (e) {
                 worker_threads.parentPort.postMessage({_wtException: e});
