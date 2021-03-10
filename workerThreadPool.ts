@@ -1,25 +1,5 @@
 import worker_threads from 'worker_threads';
 
-class IncomingMessage<INPUT> {
-    input: INPUT;
-    taskId: number;
-
-    constructor(input: INPUT, taskId: number) {
-        this.input = input;
-        this.taskId = taskId;
-    }
-}
-
-class ReturningMessage<OUTPUT> {
-    output: OUTPUT;
-    taskId: number;
-
-    constructor(output: OUTPUT, taskId: number) {
-        this.output = output;
-        this.taskId = taskId;
-    }
-}
-
 enum WorkerThreadStatus {
     waiting = 0,
     running = 1,
@@ -35,26 +15,24 @@ class WorkerThreadRecord<OUTPUT> {
 export class WorkerThreadMessenger<INPUT, OUTPUT> {
     receive(workerFunction: (input: INPUT) => Promise<OUTPUT>) {
         if (!worker_threads.isMainThread) {
-            worker_threads.parentPort.on('message', async(message: IncomingMessage<INPUT>) => {
-                const output = await workerFunction(message.input);
-                worker_threads.parentPort.postMessage(
-                    new ReturningMessage<OUTPUT>(output, message.taskId)
-                );
+            worker_threads.parentPort.on('message', async(message: INPUT) => {
+                const output = await workerFunction(message);
+                worker_threads.parentPort.postMessage(output);
             });
         }
     }
 }
 
 export class WorkerThreadPool<INPUT, OUTPUT> {
-    workers: WorkerThreadRecord<OUTPUT>[];
+    private workers: WorkerThreadRecord<OUTPUT>[];
 
     constructor(fileName: string, size: number) {
         this.workers = new Array(size).fill(null).map(v => {
             const record = new WorkerThreadRecord<OUTPUT>();
             record.workerThread = new worker_threads.Worker(fileName);
             record.status = WorkerThreadStatus.waiting;
-            record.workerThread.on('message', (message: ReturningMessage<OUTPUT>) => {
-                record.output = message.output;
+            record.workerThread.on('message', (message: OUTPUT) => {
+                record.output = message;
                 record.status = WorkerThreadStatus.finished;
             });
             return record;
@@ -66,13 +44,22 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
         const workerRecord = this.workers[workerIndex];
         workerRecord.status = WorkerThreadStatus.running;
         delete workerRecord.output;
-        workerRecord.workerThread.postMessage(new IncomingMessage(input, workerIndex));
+        workerRecord.workerThread.postMessage(input);
         while (true) {
             if (this.workers[workerIndex].status == WorkerThreadStatus.finished) {
-                return
+                workerRecord.status = WorkerThreadStatus.waiting;
+                return workerRecord.output;
             }
             await sleep(1);
         }
+    }
+
+    async submitAll(inputs: INPUT[]): Promise<OUTPUT[]> {
+        const outputs: OUTPUT[] = new Array(inputs.length);
+        for (let i = 0; i < inputs.length; i++) {
+            outputs[i] = await this.submit(inputs[i]);
+        }
+        return outputs;
     }
 
     private findAvailableWorkerIndex(): number {
