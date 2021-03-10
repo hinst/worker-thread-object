@@ -17,6 +17,7 @@ export class WorkerThreadRunner<INPUT, OUTPUT> {
     async run(filePath: string, input: INPUT): Promise<OUTPUT> {
         const worker = new worker_threads.Worker(filePath, { workerData: input });
         const output = await WorkerThreadRunner.waitForMessage(worker);
+        await worker.terminate();
         return output;
     }
 
