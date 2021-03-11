@@ -1,9 +1,9 @@
 import worker_threads from 'worker_threads';
 
 enum WorkerThreadStatus {
-    waiting = 0,
-    running = 1,
-    finished = 2
+    waiting = 'w',
+    running = 'r',
+    finished = 'f'
 }
 
 class WorkerThreadRecord<OUTPUT> {
@@ -27,28 +27,32 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
     private workers: WorkerThreadRecord<OUTPUT>[];
 
     constructor(fileName: string, size: number) {
-        this.workers = new Array(size).fill(null).map(v => {
+        this.workers = [];
+        for (let i = 0; i < size; i++) {
             const record = new WorkerThreadRecord<OUTPUT>();
             record.workerThread = new worker_threads.Worker(fileName);
             record.status = WorkerThreadStatus.waiting;
+            if (false)
             record.workerThread.on('message', (message: OUTPUT) => {
+                console.log('got message ' + i, message);
                 record.output = message;
                 record.status = WorkerThreadStatus.finished;
             });
-            return record;
-        });
+            this.workers.push(record);
+        }
     }
 
     async submit(input: INPUT): Promise<OUTPUT> {
-        let workerIndex = await this.waitAvailableWorkerIndex();
-        const workerRecord = this.workers[workerIndex];
-        workerRecord.status = WorkerThreadStatus.running;
-        delete workerRecord.output;
-        workerRecord.workerThread.postMessage(input);
+        const workerIndex = await this.waitAvailableWorkerIndex();
+        this.workers[workerIndex].status = WorkerThreadStatus.running;
+        this.workers[workerIndex].output = undefined;
+        console.log('posting ' + workerIndex, this.workers.map(w => w.status).join(''));
+        this.workers[workerIndex].workerThread.postMessage(input);
         while (true) {
             if (this.workers[workerIndex].status == WorkerThreadStatus.finished) {
-                workerRecord.status = WorkerThreadStatus.waiting;
-                return workerRecord.output;
+                this.workers[workerIndex].status = WorkerThreadStatus.waiting;
+                console.log('returning ' + workerIndex);
+                return this.workers[workerIndex].output;
             }
             await sleep(1);
         }
@@ -77,6 +81,10 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
                 return index;
             await sleep(1);
         }
+    }
+
+    get hasFreeSlots(): boolean {
+        return this.workers.some(w => w.status == WorkerThreadStatus.waiting);
     }
 }
 
