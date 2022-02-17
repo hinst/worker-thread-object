@@ -6,6 +6,8 @@ enum WorkerThreadStatus {
     finished = 'f'
 }
 
+const DEBUG_ENABLED = false;
+
 class WorkerThreadRecord<OUTPUT> {
     constructor(
         public workerThread: worker_threads.Worker,
@@ -60,12 +62,12 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
         else
             throw new Error('Bad scheduling');
         this.workers[workerIndex].output = undefined;
-        console.log('posting ' + workerIndex, this.workers.map(w => w.status).join(''));
+        if (DEBUG_ENABLED) console.log('posting ' + workerIndex, this.workers.map(w => w.status).join(''));
         this.workers[workerIndex].workerThread.postMessage(input);
         while (true) {
             if (this.workers[workerIndex].status == WorkerThreadStatus.finished) {
                 this.workers[workerIndex].status = WorkerThreadStatus.waiting;
-                console.log('returning ' + workerIndex);
+                if (DEBUG_ENABLED) console.log('returning ' + workerIndex);
                 return this.workers[workerIndex].output!;
             }
             await sleep(1);
