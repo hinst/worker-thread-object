@@ -45,8 +45,20 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
     }
 
     async submit(input: INPUT): Promise<OUTPUT> {
-        const workerIndex = await this.waitAvailableWorkerIndex();
-        this.workers[workerIndex].status = WorkerThreadStatus.running;
+        let workerIndex: number = 0;
+        while (true) {
+            const index = this.findAvailableWorkerIndex();
+            if (index != null) {
+                workerIndex = index;
+                break;
+            }
+            await sleep(1);
+        }
+
+        if (this.workers[workerIndex].status == WorkerThreadStatus.waiting)
+            this.workers[workerIndex].status = WorkerThreadStatus.running;
+        else
+            throw new Error('Bad scheduling');
         this.workers[workerIndex].output = undefined;
         console.log('posting ' + workerIndex, this.workers.map(w => w.status).join(''));
         this.workers[workerIndex].workerThread.postMessage(input);
@@ -74,15 +86,6 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
                 return i;
         }
         return null;
-    }
-
-    private async waitAvailableWorkerIndex(): Promise<number> {
-        while (true) {
-            const index = this.findAvailableWorkerIndex();
-            if (index != null)
-                return index;
-            await sleep(1);
-        }
     }
 
     get hasFreeSlots(): boolean {
