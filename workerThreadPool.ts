@@ -90,8 +90,9 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
         return null;
     }
 
-    get hasFreeSlots(): boolean {
-        return this.workers.some(w => w.status == WorkerThreadStatus.waiting);
+    async close() {
+        for (let i = 0; i < this.workers.length; i++)
+            await this.workers[i].workerThread.terminate();
     }
 }
 
