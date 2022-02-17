@@ -6,9 +6,9 @@ export class WorkerThreadRunner<INPUT, OUTPUT> {
             const input: INPUT = worker_threads.workerData;
             try {
                 const output = await workerFunction(input);
-                worker_threads.parentPort.postMessage(output);
+                worker_threads.parentPort?.postMessage(output);
             } catch (e) {
-                worker_threads.parentPort.postMessage({_wtException: e});
+                worker_threads.parentPort?.postMessage({_wtException: e});
                 return;
             }
         }

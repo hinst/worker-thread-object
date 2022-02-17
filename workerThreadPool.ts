@@ -7,17 +7,20 @@ enum WorkerThreadStatus {
 }
 
 class WorkerThreadRecord<OUTPUT> {
-    workerThread: worker_threads.Worker;
-    status: WorkerThreadStatus;
-    output: OUTPUT;
+    constructor(
+        public workerThread: worker_threads.Worker,
+        public status: WorkerThreadStatus,
+    ) {
+    }
+    output?: OUTPUT;
 }
 
 export class WorkerThreadMessenger<INPUT, OUTPUT> {
     receive(workerFunction: (input: INPUT) => Promise<OUTPUT>) {
         if (!worker_threads.isMainThread) {
-            worker_threads.parentPort.on('message', async(message: INPUT) => {
+            worker_threads.parentPort?.on('message', async(message: INPUT) => {
                 const output = await workerFunction(message);
-                worker_threads.parentPort.postMessage(output);
+                worker_threads.parentPort?.postMessage(output);
             });
         }
     }
@@ -29,12 +32,11 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
     constructor(fileName: string, size: number) {
         this.workers = [];
         for (let i = 0; i < size; i++) {
-            const record = new WorkerThreadRecord<OUTPUT>();
-            record.workerThread = new worker_threads.Worker(fileName);
-            record.status = WorkerThreadStatus.waiting;
-            if (false)
+            const record = new WorkerThreadRecord<OUTPUT>(
+                new worker_threads.Worker(fileName),
+                WorkerThreadStatus.waiting
+            );
             record.workerThread.on('message', (message: OUTPUT) => {
-                console.log('got message ' + i, message);
                 record.output = message;
                 record.status = WorkerThreadStatus.finished;
             });
@@ -52,7 +54,7 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
             if (this.workers[workerIndex].status == WorkerThreadStatus.finished) {
                 this.workers[workerIndex].status = WorkerThreadStatus.waiting;
                 console.log('returning ' + workerIndex);
-                return this.workers[workerIndex].output;
+                return this.workers[workerIndex].output!;
             }
             await sleep(1);
         }
@@ -66,7 +68,7 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
         return outputs;
     }
 
-    private findAvailableWorkerIndex(): number {
+    private findAvailableWorkerIndex(): number | null {
         for (let i = 0; i < this.workers.length; i++) {
             if (this.workers[i].status == WorkerThreadStatus.waiting)
                 return i;
