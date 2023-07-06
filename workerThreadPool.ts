@@ -12,17 +12,22 @@ class WorkerThreadRecord<OUTPUT> {
     constructor(
         public workerThread: worker_threads.Worker,
         public status: WorkerThreadStatus,
-    ) {
-    }
+    ) {}
     output?: OUTPUT;
+    exception?: any;
 }
 
 export class WorkerThreadMessenger<INPUT, OUTPUT> {
     receive(workerFunction: (input: INPUT) => Promise<OUTPUT>) {
         if (!worker_threads.isMainThread) {
             worker_threads.parentPort?.on('message', async(message: INPUT) => {
-                const output = await workerFunction(message);
-                worker_threads.parentPort?.postMessage(output);
+                try {
+                    const output = await workerFunction(message);
+                    worker_threads.parentPort?.postMessage(output);
+                } catch (e) {
+                    worker_threads.parentPort?.postMessage({_wtException: e});
+                    return;
+                }
             });
         }
     }
@@ -38,8 +43,11 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
                 new worker_threads.Worker(fileName),
                 WorkerThreadStatus.waiting
             );
-            record.workerThread.on('message', (message: OUTPUT) => {
-                record.output = message;
+            record.workerThread.on('message', (message: OUTPUT & { _wtException: any }) => {
+                if (message && message._wtException)
+                    record.exception = message._wtException;
+                else
+                    record.output = message;
                 record.status = WorkerThreadStatus.finished;
             });
             this.workers.push(record);
@@ -62,12 +70,15 @@ export class WorkerThreadPool<INPUT, OUTPUT> {
         else
             throw new Error('Bad scheduling');
         this.workers[workerIndex].output = undefined;
+        this.workers[workerIndex].exception = undefined;
         if (DEBUG_ENABLED) console.log('posting ' + workerIndex, this.workers.map(w => w.status).join(''));
         this.workers[workerIndex].workerThread.postMessage(input);
         while (true) {
             if (this.workers[workerIndex].status == WorkerThreadStatus.finished) {
                 this.workers[workerIndex].status = WorkerThreadStatus.waiting;
                 if (DEBUG_ENABLED) console.log('returning ' + workerIndex);
+                if (this.workers[workerIndex].exception)
+                    throw this.workers[workerIndex].exception;
                 return this.workers[workerIndex].output!;
             }
             await sleep(1);
